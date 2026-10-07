@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# Bluetooth captures contain nearby devices' broadcasts
+btmon*.txt
+# Real config lives in ~/.config/buds-notifier/; only the example is versioned
+config.toml
