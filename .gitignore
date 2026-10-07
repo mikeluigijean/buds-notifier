@@ -1,6 +1,5 @@
-__pycache__/
-*.pyc
+# Compiled by install.sh / gnome-extensions pack; extensions.gnome.org compiles its own
+gschemas.compiled
+*.shell-extension.zip
 # Bluetooth captures contain nearby devices' broadcasts
 btmon*.txt
-# Real config lives in ~/.config/buds-notifier/; only the example is versioned
-config.toml

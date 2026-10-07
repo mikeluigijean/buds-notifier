@@ -6,13 +6,6 @@ import St from 'gi://St';
 const BAR_WIDTH = 64;
 const LOW_LEVEL = 15;
 
-const SLOTS = [
-    ['left', 'Left'],
-    ['right', 'Right'],
-    ['case', 'Case'],
-    ['single', 'Battery'],
-];
-
 export const BudsCard = GObject.registerClass({
     Signals: {
         'action': {param_types: [GObject.TYPE_STRING]},
@@ -29,7 +22,8 @@ export const BudsCard = GObject.registerClass({
         this._gicon = gicon;
     }
 
-    // card: {kind, title, subtitle, battery?, actions?}
+    // card: {kind, title, subtitle, body?, battery?: {slots: [{label, level, charging}]},
+    //        buttons?: [{id, label}]}
     setContent(card) {
         this.destroy_all_children();
         this.style_class = `buds-card buds-card-${card.kind}`;
@@ -56,14 +50,17 @@ export const BudsCard = GObject.registerClass({
         header.add_child(close);
         this.add_child(header);
 
+        if (card.body)
+            this.add_child(new St.Label({text: card.body, style_class: 'buds-card-body'}));
+
         const battery = this._buildBattery(card.battery);
         if (battery)
             this.add_child(battery);
 
-        const actions = card.actions ?? [];
-        if (actions.length) {
+        const buttons = card.buttons ?? [];
+        if (buttons.length) {
             const row = new St.BoxLayout({style_class: 'buds-card-actions', x_expand: true});
-            for (const {id, label} of actions) {
+            for (const {id, label} of buttons) {
                 const button = new St.Button({
                     label,
                     style_class: id === 'connect' ? 'button buds-card-button default' : 'button buds-card-button',
@@ -78,19 +75,13 @@ export const BudsCard = GObject.registerClass({
     }
 
     _buildBattery(battery) {
-        if (!battery)
+        const slots = battery?.slots ?? [];
+        if (!slots.length)
             return null;
         const row = new St.BoxLayout({style_class: 'buds-card-battery', x_expand: true});
-        for (const [key, name] of SLOTS) {
-            const slot = battery[key];
-            if (slot === null || slot === undefined)
-                continue;
-            // single may be a bare number; left/right/case are {level, charging}
-            const level = typeof slot === 'number' ? slot : slot.level;
-            const charging = typeof slot === 'object' && slot.charging;
-            row.add_child(this._buildSlot(name, level, charging));
-        }
-        return row.get_n_children() ? row : null;
+        for (const {label, level, charging} of slots)
+            row.add_child(this._buildSlot(label, level, charging));
+        return row;
     }
 
     _buildSlot(name, level, charging) {

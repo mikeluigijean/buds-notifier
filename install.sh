@@ -1,61 +1,47 @@
 #!/usr/bin/env bash
-# Install buds-notifier as a systemd user service running from this repository.
-# Safe to re-run. Needs no sudo (see README for the one-time BlueZ setting).
+# Install the Buds Notifier GNOME Shell extension from this repository (development, or
+# installing without extensions.gnome.org). Safe to re-run; needs no sudo.
 set -euo pipefail
 
+UUID="buds-notifier@mikeluigijean.github.io"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UNIT_DIR="$HOME/.config/systemd/user"
-CONFIG_DIR="$HOME/.config/buds-notifier"
+SRC="$REPO_DIR/gnome-extension/$UUID"
+EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
 
-if ! /usr/bin/python3 -c 'import gi, dbus' 2>/dev/null; then
-    echo "Missing Python bindings. Install them with:" >&2
-    echo "  sudo apt install python3-gi python3-dbus" >&2
+glib-compile-schemas "$SRC/schemas"
+
+mkdir -p "$EXT_DIR"
+if [[ -L "$EXT_DIR/$UUID" || ! -e "$EXT_DIR/$UUID" ]]; then
+    ln -sfn "$SRC" "$EXT_DIR/$UUID"
+    echo "Linked $EXT_DIR/$UUID -> $SRC"
+else
+    echo "Not linking: $EXT_DIR/$UUID exists and is not a symlink (installed from extensions.gnome.org?)" >&2
     exit 1
 fi
 
-EXT_UUID="buds-notifier@mikeluigijean.github.io"
-EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
+# Retire the Python service used by versions before the all-in-extension rewrite.
+if systemctl --user cat buds-notifier.service >/dev/null 2>&1; then
+    systemctl --user disable --now buds-notifier.service >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/buds-notifier.service"
+    systemctl --user daemon-reload
+    echo "Removed the old buds-notifier background service (~/.config/buds-notifier/ is no longer used)."
+fi
 
-mkdir -p "$UNIT_DIR" "$CONFIG_DIR" "$EXT_DIR"
-sed "s|@REPO_DIR@|$REPO_DIR|" "$REPO_DIR/systemd/buds-notifier.service" > "$UNIT_DIR/buds-notifier.service"
-echo "Installed $UNIT_DIR/buds-notifier.service (WorkingDirectory=$REPO_DIR)"
-
-systemctl --user daemon-reload
-systemctl --user enable buds-notifier.service
-
-if [[ ! -e "$CONFIG_DIR/config.toml" ]]; then
-    cp "$REPO_DIR/config.example.toml" "$CONFIG_DIR/config.toml"
-    echo "Created $CONFIG_DIR/config.toml with example values."
-    echo "Edit device_address and name_patterns, then start the service:"
-    echo "  systemctl --user restart buds-notifier"
+# Enable it. A newly installed extension is only discovered at login on Wayland, so if the
+# running shell doesn't know it yet, add it to the enabled list for the next login.
+if gnome-extensions info "$UUID" 2>/dev/null | grep -q 'State: ACTIVE'; then
+    echo "Extension is active. Log out and back in to load code changes."
+elif gnome-extensions enable "$UUID" 2>/dev/null; then
+    echo "Extension enabled."
 else
-    echo "Kept existing $CONFIG_DIR/config.toml"
-    systemctl --user restart buds-notifier.service
-    echo "Service: $(systemctl --user is-active buds-notifier.service)"
+    current="$(gsettings get org.gnome.shell enabled-extensions)"
+    if [[ "$current" != *"'$UUID'"* ]]; then
+        if [[ "$current" == "@as []" || "$current" == "[]" ]]; then
+            gsettings set org.gnome.shell enabled-extensions "['$UUID']"
+        else
+            gsettings set org.gnome.shell enabled-extensions "${current%]}, '$UUID']"
+        fi
+    fi
+    echo "Log out and back in once: the extension will then be active."
 fi
-
-# GNOME Shell extension for the custom popups (optional; without it: standard notifications).
-if [[ -L "$EXT_DIR/$EXT_UUID" || ! -e "$EXT_DIR/$EXT_UUID" ]]; then
-    ln -sfn "$REPO_DIR/gnome-extension/$EXT_UUID" "$EXT_DIR/$EXT_UUID"
-    echo "Linked extension $EXT_UUID"
-else
-    echo "Skipped extension link: $EXT_DIR/$EXT_UUID exists and is not a symlink" >&2
-fi
-if gnome-extensions info "$EXT_UUID" 2>/dev/null | grep -q 'State: ACTIVE'; then
-    echo "Popup extension active (log out/in to load code changes)."
-else
-    echo "Popup extension: log out and back in once, then run:"
-    echo "  gnome-extensions enable $EXT_UUID"
-fi
-
-if ! busctl get-property org.bluez /org/bluez/hci0 org.bluez.AdvertisementMonitorManager1 \
-        SupportedFeatures 2>/dev/null | grep -q controller-patterns; then
-    cat <<'EOF'
-
-Nearby popup is disabled: BlueZ advertisement monitors with hardware filtering are unavailable.
-If your adapter supports it, enable once (in a normal terminal; Bluetooth devices reconnect):
-  sudo cp /etc/bluetooth/main.conf /etc/bluetooth/main.conf.bak
-  sudo sed -i 's/^#Experimental = false/Experimental = true/' /etc/bluetooth/main.conf
-  sudo systemctl restart bluetooth
-EOF
-fi
+echo "Settings and status: gnome-extensions prefs $UUID"

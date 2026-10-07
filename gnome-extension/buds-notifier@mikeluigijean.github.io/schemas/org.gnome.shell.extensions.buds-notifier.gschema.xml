@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.buds-notifier"
+          path="/org/gnome/shell/extensions/buds-notifier/">
+    <key name="low-battery-percent" type="i">
+      <range min="1" max="50"/>
+      <default>15</default>
+      <summary>Warn when the lowest earbud drops below this level (%)</summary>
+    </key>
+    <key name="low-battery-rearm-percent" type="i">
+      <range min="2" max="100"/>
+      <default>20</default>
+      <summary>Warn again only after charging back to this level (%)</summary>
+    </key>
+    <key name="nearby-enabled" type="b">
+      <default>true</default>
+      <summary>Show a card when a paired headset is nearby but not connected</summary>
+    </key>
+    <key name="nearby-cooldown-seconds" type="i">
+      <range min="10" max="3600"/>
+      <default>60</default>
+      <summary>Minimum time between nearby cards for the same headset</summary>
+    </key>
+    <key name="nearby-rssi-found" type="i">
+      <range min="-126" max="20"/>
+      <default>-85</default>
+      <summary>Signal strength (dBm) needed to count as nearby</summary>
+    </key>
+    <key name="nearby-rssi-lost" type="i">
+      <range min="-127" max="19"/>
+      <default>-95</default>
+      <summary>Signal strength (dBm) below which a headset counts as gone</summary>
+    </key>
+    <key name="use-budslink" type="b">
+      <default>true</default>
+      <summary>Use BudsLink (if installed) for left/right/case battery</summary>
+    </key>
+    <key name="excluded-devices" type="as">
+      <default>[]</default>
+      <summary>Bluetooth addresses of headsets to ignore</summary>
+    </key>
+    <key name="included-devices" type="as">
+      <default>[]</default>
+      <summary>Bluetooth addresses of other audio devices (e.g. speakers) to watch</summary>
+    </key>
+    <key name="welcome-shown" type="b">
+      <default>false</default>
+      <summary>The first-run card has been shown</summary>
+    </key>
+  </schema>
+</schemalist>

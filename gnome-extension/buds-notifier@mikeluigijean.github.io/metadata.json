@@ -1,8 +1,8 @@
 {
   "uuid": "buds-notifier@mikeluigijean.github.io",
-  "name": "Buds Notifier Popups",
-  "description": "Windows-style popup cards for buds-notifier: nearby + Connect, connected with left/right/case battery, disconnected and low battery. Driven by the buds-notifier service over D-Bus.",
+  "name": "Buds Notifier",
+  "description": "Windows-style popup cards for your Bluetooth earbuds and headsets: connected with battery (left/right/case with BudsLink), disconnected, low battery, and a Swift-Pair-like 'nearby' card with a Connect button. Works automatically for every paired headset.\n\nOptional: install BudsLink (Flathub) for per-earbud and case battery. The nearby card needs a Bluetooth adapter with hardware advertisement filtering and BlueZ experimental features (see the extension's preferences).",
   "shell-version": ["50"],
   "url": "https://github.com/mikeluigijean/buds-notifier",
-  "version": 1
+  "settings-schema": "org.gnome.shell.extensions.buds-notifier"
 }

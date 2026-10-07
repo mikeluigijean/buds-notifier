@@ -43,6 +43,11 @@
   color: #ffffff;
 }
 
+.buds-card-body {
+  font-size: 9.5pt;
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .buds-card-battery {
   spacing: 8px;
 }
