@@ -13,7 +13,10 @@ if ! /usr/bin/python3 -c 'import gi, dbus' 2>/dev/null; then
     exit 1
 fi
 
-mkdir -p "$UNIT_DIR" "$CONFIG_DIR"
+EXT_UUID="buds-notifier@mikeluigijean.github.io"
+EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
+
+mkdir -p "$UNIT_DIR" "$CONFIG_DIR" "$EXT_DIR"
 sed "s|@REPO_DIR@|$REPO_DIR|" "$REPO_DIR/systemd/buds-notifier.service" > "$UNIT_DIR/buds-notifier.service"
 echo "Installed $UNIT_DIR/buds-notifier.service (WorkingDirectory=$REPO_DIR)"
 
@@ -29,6 +32,20 @@ else
     echo "Kept existing $CONFIG_DIR/config.toml"
     systemctl --user restart buds-notifier.service
     echo "Service: $(systemctl --user is-active buds-notifier.service)"
+fi
+
+# GNOME Shell extension for the custom popups (optional; without it: standard notifications).
+if [[ -L "$EXT_DIR/$EXT_UUID" || ! -e "$EXT_DIR/$EXT_UUID" ]]; then
+    ln -sfn "$REPO_DIR/gnome-extension/$EXT_UUID" "$EXT_DIR/$EXT_UUID"
+    echo "Linked extension $EXT_UUID"
+else
+    echo "Skipped extension link: $EXT_DIR/$EXT_UUID exists and is not a symlink" >&2
+fi
+if gnome-extensions info "$EXT_UUID" 2>/dev/null | grep -q 'State: ACTIVE'; then
+    echo "Popup extension active (log out/in to load code changes)."
+else
+    echo "Popup extension: log out and back in once, then run:"
+    echo "  gnome-extensions enable $EXT_UUID"
 fi
 
 if ! busctl get-property org.bluez /org/bluez/hci0 org.bluez.AdvertisementMonitorManager1 \

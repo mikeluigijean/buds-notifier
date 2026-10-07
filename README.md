@@ -8,6 +8,10 @@ GNOME desktop notifications for Samsung Galaxy Buds (built for the Buds3 Pro) on
 - **Nearby** popup with a **Connect** button (Swift-Pair-like) when the buds are advertising
   nearby but aren't connected to the laptop
 
+With the bundled GNOME Shell extension these appear as **Windows-style cards** in the
+bottom-right corner (slide in, auto-hide, hover to keep, left/right/case battery). Without it,
+they're standard GNOME notifications.
+
 Tested on Ubuntu with GNOME 50 (Wayland), BlueZ 5.85, PipeWire 1.6.2 / WirePlumber 0.5.13,
 Intel AX201 Bluetooth.
 
@@ -18,6 +22,11 @@ Intel AX201 Bluetooth.
   The service always runs `/usr/bin/python3`, since a `python3` earlier in `PATH` (pyenv, conda,
   `~/.local/bin`) may not have these packages.
 - Headset **paired and trusted** with the laptop.
+- **Custom popups (optional):** GNOME Shell 50 (the extension declares only the versions it was
+  tested on).
+- **Left/right/case battery (optional):** the BudsLink Flatpak (`io.github.maniacx.BudsLink`,
+  by the author of the Bluetooth Battery Meter extension, which uses it too). Without it,
+  the single BlueZ level is shown (the lower bud).
 - **Nearby popup only:** BlueZ advertisement monitors with hardware filtering, i.e.
   `Experimental = true` in `/etc/bluetooth/main.conf` and an adapter reporting
   `controller-patterns` (check:
@@ -33,9 +42,14 @@ cd ~/scripts/buds-notifier
 ```
 
 `install.sh` (safe to re-run, no sudo) installs the systemd user unit pointing at the clone,
-enables it at login, and creates `~/.config/buds-notifier/config.toml` from
-`config.example.toml` if it doesn't exist. Then set your values (see [Configuration](#configuration))
+enables it at login, creates `~/.config/buds-notifier/config.toml` from
+`config.example.toml` if it doesn't exist, and links the popup extension into
+`~/.local/share/gnome-shell/extensions/`. Then set your values (see [Configuration](#configuration))
 and `systemctl --user restart buds-notifier`.
+
+Custom popups: on Wayland GNOME only discovers new extensions at login, so log out and back in
+once, then `gnome-extensions enable buds-notifier@mikeluigijean.github.io`. Code changes to the
+extension also need a re-login.
 
 One-time BlueZ setting for the nearby popup (normal terminal; Bluetooth devices disconnect briefly):
 
@@ -89,14 +103,21 @@ Use names unique to **your** buds in `name_patterns`: your custom name and the L
 buds_notifier/
   __main__.py                     # wiring + GLib main loop
   config.py                       # loads config.toml
+  battery.py                      # Battery (left/right/case or single) + BudsLink state parsing
   services/
     bluez_service.py              # BlueZ (system bus): device state, battery, connect
     advmon_service.py             # BlueZ advertisement monitors (hardware LE filtering)
+    budslink_service.py           # BudsLink (session bus): per-bud + case battery
+    shell_popup_service.py        # client of the popup extension (session bus)
     notification_service.py       # org.freedesktop.Notifications (session bus), buttons
+  presenters/
+    shell_presenter.py            # cards via the extension, falls back to ↓
+    notification_presenter.py     # standard notifications
   watchers/
     connection_watcher.py         # connected / disconnected / low battery logic
     nearby_watcher.py             # nearby popup + Connect button logic
-tests/                            # unittest, no D-Bus needed for watcher/config tests
+gnome-extension/buds-notifier@mikeluigijean.github.io/   # GNOME Shell extension (the cards)
+tests/                            # unittest, D-Bus-free fakes
 systemd/buds-notifier.service     # unit template (install.sh fills in the repo path)
 ```
 
@@ -132,6 +153,41 @@ connect/disconnect) for the paired device only. The battery level often arrives 
   matched (strangers' buds, Galaxy Watches).
 - No popup while the buds are connected to the laptop; connecting closes an open nearby popup.
 
+### Custom popups (GNOME Shell extension)
+The service decides *what* to show; the extension only draws. It owns
+`io.github.mikeluigijean.BudsNotifier.Shell` on the session bus, object
+`/io/github/mikeluigijean/BudsNotifier/Shell`, interface `…Shell1`:
+
+| Member | Meaning |
+|---|---|
+| `Show(s card_json) → u id` | Show a card; returns `0` if it can't now (Do Not Disturb, locked screen, bad JSON) so the service falls back to a standard (queued) notification |
+| `Close(u id)` | Hide a card |
+| signal `ActionInvoked(u id, s action)` | Button pressed (`connect`, `dismiss`) |
+| signal `Closed(u id, s reason)` | `expired`, `dismissed`, `action`, `replaced`, `closed`, `disabled` |
+
+Card JSON: `{"kind": "nearby|connected|disconnected|low-battery|error", "title", "subtitle",
+"battery": {"left": {"level", "charging"} | null, "right": …, "case": …, "single": n | null},
+"actions": [{"id", "label"}], "replaces_id": n, "timeout": seconds}`. `replaces_id` matching the
+visible card updates it in place (used when the battery arrives after "connected").
+One card at a time; default timeouts: nearby 20 s, connected 8 s, disconnected 6 s, low battery
+and errors 10 s; hovering pauses the timer.
+
+Try it by hand:
+```bash
+gdbus call --session --dest io.github.mikeluigijean.BudsNotifier.Shell \
+  --object-path /io/github/mikeluigijean/BudsNotifier/Shell \
+  --method io.github.mikeluigijean.BudsNotifier.Shell1.Show \
+  '{"kind":"connected","title":"Test Buds","subtitle":"Connected","battery":{"left":{"level":61},"right":{"level":44,"charging":true}}}'
+```
+
+### Left / right / case battery (BudsLink)
+BlueZ only reports one level (the lower bud). BudsLink reads all three over the buds' control
+channel. Its device paths mirror BlueZ's (`/org/bluez/hci0/dev_X` →
+`/io/github/maniacx/BudsLink/Devices/hci0/dev_X`); `Device.State` (JSON) has `battery1/2/3Level`
+and `…Status` = left / right / case (`disconnected` = no value, e.g. case while the buds are out).
+The service holds BudsLink (`HoldService` + 120 s heartbeat) only while the buds are connected.
+The low-battery warning uses the **lower bud** (case excluded).
+
 ### Connect button
 Calls `Device1.ConnectProfile(A2DP sink UUID 0000110b-…)` on `device_address`, after checking the
 device is `Paired` with `AddressType == public`. It does **not** use `Device1.Connect()` /
@@ -160,8 +216,8 @@ profile `a2dp-sink` (AAC).
 - **No LE Audio on the AX201.** `sudo btmgmt --index 0 info` lists no `cis-central` /
   `iso-broadcaster`: LC3 over LE, Auracast and the "(XXXX) LE" entry are unusable. Classic audio
   still works well: AAC for music, LC3-SWB over HFP for calls.
-- **Low-battery warning can repeat.** BlueZ's single battery value jumps (e.g. 14% → 20%+ → 1%),
-  which can re-arm the warning several times per session.
+- **Galaxy Buds Client and BudsLink share the buds' single control channel.** Running both at
+  once may make one of them fail to connect; not yet tested.
 
 ## Tips
 
@@ -179,6 +235,8 @@ profile `a2dp-sink` (AAC).
 
 ```bash
 systemctl --user disable --now buds-notifier
+gnome-extensions disable buds-notifier@mikeluigijean.github.io
+rm ~/.local/share/gnome-shell/extensions/buds-notifier@mikeluigijean.github.io
 rm ~/.config/systemd/user/buds-notifier.service
 rm -r ~/.config/buds-notifier
 systemctl --user daemon-reload

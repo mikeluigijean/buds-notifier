@@ -1,34 +1,47 @@
-"""Turn headset connection and battery changes into notifications."""
+"""Turn headset connection and battery changes into popups."""
 
-from typing import Protocol
+import time
+from collections.abc import Callable
 
-from ..services.notification_service import URGENCY_CRITICAL
+from ..battery import Battery
+from ..presenters import NO_HANDLE, Presenter
 
-
-class Notifier(Protocol):
-    def notify(self, summary: str, body: str = "", icon: str = "audio-headset",
-               replaces_id: int = 0, actions=None, urgency: int = 1) -> int: ...
+# Battery details arriving this soon after connecting update the "connected" popup in place.
+UPDATE_WINDOW_SECONDS = 15
 
 
 class ConnectionWatcher:
-    def __init__(self, display_name: str, notifier: Notifier,
-                 low_battery_percent: int, low_battery_rearm_percent: int):
+    def __init__(self, display_name: str, presenter: Presenter,
+                 low_battery_percent: int, low_battery_rearm_percent: int,
+                 clock: Callable[[], float] = time.monotonic):
         self._name = display_name
-        self._notifier = notifier
+        self._presenter = presenter
         self._low = low_battery_percent
         self._rearm = low_battery_rearm_percent
+        self._clock = clock
 
         self._connected = False
-        self._battery: int | None = None
+        self._bluez_percent: int | None = None   # BlueZ Battery1: one value (the lower bud)
+        self._budslink: Battery | None = None    # BudsLink: left / right / case
         self._low_warned = False
-        # Id of the "connected" notification while it still lacks a battery level.
-        self._pending_battery_id = 0
+        self._handle = NO_HANDLE
+        self._connected_at = 0.0
 
-    def sync(self, connected: bool, battery: int | None) -> None:
+    @property
+    def battery(self) -> Battery | None:
+        if self._budslink and self._budslink.has_buds:
+            return self._budslink
+        if self._bluez_percent is not None:
+            return Battery(single=self._bluez_percent)
+        return None
+
+    def sync(self, connected: bool, bluez_percent: int | None,
+             budslink: Battery | None = None) -> None:
         """Adopt the current state silently (startup, bluetoothd restart)."""
         self._connected = connected
-        self._battery = battery if connected else None
-        self._pending_battery_id = 0
+        self._bluez_percent = bluez_percent if connected else None
+        self._budslink = budslink if connected else None
+        self._handle = NO_HANDLE
         self._low_warned = False
         if connected:
             self._check_low_battery()
@@ -40,34 +53,37 @@ class ConnectionWatcher:
 
         if connected:
             self._low_warned = False
-            notification_id = self._notifier.notify(f"{self._name} connected", self._battery_text())
-            self._pending_battery_id = notification_id if self._battery is None else 0
+            self._connected_at = self._clock()
+            self._handle = self._presenter.connected(self._name, self.battery)
             self._check_low_battery()
         else:
-            self._battery = None
-            self._pending_battery_id = 0
-            self._notifier.notify(f"{self._name} disconnected")
+            self._bluez_percent = None
+            self._budslink = None
+            self._handle = NO_HANDLE
+            self._presenter.disconnected(self._name)
 
-    def on_battery_changed(self, percentage: int | None) -> None:
-        self._battery = percentage
-        if percentage is None or not self._connected:
+    def on_bluez_battery(self, percentage: int | None) -> None:
+        self._bluez_percent = percentage
+        self._battery_changed()
+
+    def on_budslink_battery(self, battery: Battery | None) -> None:
+        self._budslink = battery
+        self._battery_changed()
+
+    def _battery_changed(self) -> None:
+        if not self._connected:
             return
-
-        if self._pending_battery_id:
-            self._notifier.notify(f"{self._name} connected", self._battery_text(),
-                                  replaces_id=self._pending_battery_id)
-            self._pending_battery_id = 0
+        if self._handle[1] and self._clock() - self._connected_at <= UPDATE_WINDOW_SECONDS:
+            self._handle = self._presenter.connected(self._name, self.battery, replaces=self._handle)
         self._check_low_battery()
 
-    def _battery_text(self) -> str:
-        return "Battery: unknown" if self._battery is None else f"Battery: {self._battery}%"
-
     def _check_low_battery(self) -> None:
-        if self._battery is None:
+        battery = self.battery
+        level = battery.lowest_bud() if battery else None
+        if level is None:
             return
-        if self._battery >= self._rearm:
+        if level >= self._rearm:
             self._low_warned = False
-        elif self._battery < self._low and not self._low_warned:
+        elif level < self._low and not self._low_warned:
             self._low_warned = True
-            self._notifier.notify(f"{self._name} battery low", f"Battery: {self._battery}%",
-                                  icon="battery-caution", urgency=URGENCY_CRITICAL)
+            self._presenter.low_battery(self._name, battery)

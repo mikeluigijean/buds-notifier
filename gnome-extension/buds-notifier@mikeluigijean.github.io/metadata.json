@@ -1,0 +1,8 @@
+{
+  "uuid": "buds-notifier@mikeluigijean.github.io",
+  "name": "Buds Notifier Popups",
+  "description": "Windows-style popup cards for buds-notifier: nearby + Connect, connected with left/right/case battery, disconnected and low battery. Driven by the buds-notifier service over D-Bus.",
+  "shell-version": ["50"],
+  "url": "https://github.com/mikeluigijean/buds-notifier",
+  "version": 1
+}

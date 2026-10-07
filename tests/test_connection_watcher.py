@@ -1,100 +1,115 @@
 import unittest
 
+from buds_notifier.battery import Battery, Slot
 from buds_notifier.watchers.connection_watcher import ConnectionWatcher
+from tests.fakes import FakePresenter
 
 
-class FakeNotifier:
+class Harness:
     def __init__(self):
-        self.sent = []
-        self._next_id = 1
-
-    def notify(self, summary, body="", icon="audio-headset", replaces_id=0, actions=None, urgency=1):
-        notification_id = replaces_id or self._next_id
-        self._next_id += 1
-        self.sent.append({"id": notification_id, "summary": summary, "body": body,
-                          "replaces_id": replaces_id, "urgency": urgency})
-        return notification_id
+        self.now = 1000.0
+        self.presenter = FakePresenter()
+        self.watcher = ConnectionWatcher("Buds", self.presenter, 15, 20, clock=lambda: self.now)
 
 
-def make_watcher():
-    notifier = FakeNotifier()
-    return ConnectionWatcher("Buds", notifier, 15, 20), notifier
+def lr(left, right, case=None):
+    return Battery(left=Slot(left), right=Slot(right), case=None if case is None else Slot(case))
 
 
 class ConnectionWatcherTest(unittest.TestCase):
     def test_sync_is_silent(self):
-        watcher, notifier = make_watcher()
-        watcher.sync(True, 50)
-        self.assertEqual(notifier.sent, [])
+        h = Harness()
+        h.watcher.sync(True, 50)
+        self.assertEqual(h.presenter.calls, [])
 
-    def test_connect_with_known_battery(self):
-        watcher, notifier = make_watcher()
-        watcher.on_battery_changed(71)  # Battery1 can appear just before Connected flips
-        watcher.on_connected_changed(True)
-        self.assertEqual(notifier.sent[-1]["summary"], "Buds connected")
-        self.assertEqual(notifier.sent[-1]["body"], "Battery: 71%")
+    def test_connect_with_known_bluez_battery(self):
+        h = Harness()
+        h.watcher.on_bluez_battery(71)  # Battery1 can appear just before Connected flips
+        h.watcher.on_connected_changed(True)
+        (event,) = h.presenter.events("connected")
+        self.assertEqual(event["battery"], Battery(single=71))
 
-    def test_battery_arriving_later_updates_same_notification(self):
-        watcher, notifier = make_watcher()
-        watcher.on_connected_changed(True)
-        first = notifier.sent[-1]
-        self.assertEqual(first["body"], "Battery: unknown")
-        watcher.on_battery_changed(64)
-        self.assertEqual(notifier.sent[-1]["replaces_id"], first["id"])
-        self.assertEqual(notifier.sent[-1]["body"], "Battery: 64%")
-        # Further battery updates don't re-notify
-        watcher.on_battery_changed(63)
-        self.assertEqual(len(notifier.sent), 2)
+    def test_budslink_battery_preferred_over_bluez(self):
+        h = Harness()
+        h.watcher.on_bluez_battery(44)
+        h.watcher.on_budslink_battery(lr(61, 44))
+        self.assertEqual(h.watcher.battery, lr(61, 44))
+
+    def test_budslink_without_buds_falls_back_to_bluez(self):
+        h = Harness()
+        h.watcher.on_bluez_battery(44)
+        h.watcher.on_budslink_battery(Battery(case=Slot(80)))
+        self.assertEqual(h.watcher.battery, Battery(single=44))
+
+    def test_battery_arriving_soon_updates_same_popup(self):
+        h = Harness()
+        h.watcher.on_connected_changed(True)
+        first = h.presenter.events("connected")[0]
+        self.assertIsNone(first["battery"])
+        h.now += 3
+        h.watcher.on_budslink_battery(lr(61, 44, 80))
+        second = h.presenter.events("connected")[1]
+        self.assertEqual(second["replaces"], first["handle"])
+        self.assertEqual(second["battery"], lr(61, 44, 80))
+
+    def test_battery_changes_later_do_not_repopup(self):
+        h = Harness()
+        h.watcher.on_connected_changed(True)
+        h.now += 60
+        h.watcher.on_bluez_battery(63)
+        self.assertEqual(len(h.presenter.events("connected")), 1)
 
     def test_duplicate_state_is_ignored(self):
-        watcher, notifier = make_watcher()
-        watcher.on_connected_changed(False)
-        watcher.on_connected_changed(True)
-        watcher.on_connected_changed(True)
-        self.assertEqual(len(notifier.sent), 1)
+        h = Harness()
+        h.watcher.on_connected_changed(False)
+        h.watcher.on_connected_changed(True)
+        h.watcher.on_connected_changed(True)
+        self.assertEqual(len(h.presenter.calls), 1)
 
-    def test_disconnect(self):
-        watcher, notifier = make_watcher()
-        watcher.sync(True, 80)
-        watcher.on_connected_changed(False)
-        self.assertEqual(notifier.sent[-1]["summary"], "Buds disconnected")
+    def test_disconnect_clears_battery(self):
+        h = Harness()
+        h.watcher.sync(True, 80, lr(80, 80))
+        h.watcher.on_connected_changed(False)
+        self.assertEqual(h.presenter.events("disconnected")[0]["name"], "Buds")
+        self.assertIsNone(h.watcher.battery)
 
-    def test_low_battery_warns_once_and_rearms(self):
-        watcher, notifier = make_watcher()
-        watcher.sync(True, 30)
-        watcher.on_battery_changed(14)
-        watcher.on_battery_changed(12)
-        watcher.on_battery_changed(16)  # between thresholds: still armed off
-        watcher.on_battery_changed(13)
-        lows = [n for n in notifier.sent if n["summary"] == "Buds battery low"]
-        self.assertEqual(len(lows), 1)
-        self.assertEqual(lows[0]["urgency"], 2)
+    def test_low_battery_uses_lowest_bud_and_hysteresis(self):
+        h = Harness()
+        h.watcher.sync(True, None, lr(60, 30))
+        h.watcher.on_budslink_battery(lr(60, 14))   # warn
+        h.watcher.on_budslink_battery(lr(59, 12))   # still low: no repeat
+        h.watcher.on_budslink_battery(lr(59, 16))   # between thresholds: still armed off
+        h.watcher.on_budslink_battery(lr(58, 13))
+        self.assertEqual(len(h.presenter.events("low_battery")), 1)
+        h.watcher.on_budslink_battery(lr(58, 20))   # charged back: re-arm
+        h.watcher.on_budslink_battery(lr(58, 14))
+        self.assertEqual(len(h.presenter.events("low_battery")), 2)
 
-        watcher.on_battery_changed(20)  # charged back up: re-arm
-        watcher.on_battery_changed(14)
-        lows = [n for n in notifier.sent if n["summary"] == "Buds battery low"]
-        self.assertEqual(len(lows), 2)
+    def test_case_level_never_triggers_low_battery(self):
+        h = Harness()
+        h.watcher.sync(True, None, lr(80, 80, 30))
+        h.watcher.on_budslink_battery(lr(80, 80, 5))
+        self.assertEqual(h.presenter.events("low_battery"), [])
 
     def test_low_battery_at_connect(self):
-        watcher, notifier = make_watcher()
-        watcher.on_battery_changed(10)
-        watcher.on_connected_changed(True)
-        summaries = [n["summary"] for n in notifier.sent]
-        self.assertEqual(summaries, ["Buds connected", "Buds battery low"])
+        h = Harness()
+        h.watcher.on_bluez_battery(10)
+        h.watcher.on_connected_changed(True)
+        self.assertEqual([e for e, _ in h.presenter.calls], ["connected", "low_battery"])
 
     def test_reconnect_rearms_low_battery(self):
-        watcher, notifier = make_watcher()
-        watcher.sync(True, 10)  # silent sync still warns when already low
-        watcher.on_connected_changed(False)
-        watcher.on_battery_changed(10)
-        watcher.on_connected_changed(True)
-        lows = [n for n in notifier.sent if n["summary"] == "Buds battery low"]
-        self.assertEqual(len(lows), 2)
+        h = Harness()
+        h.watcher.sync(True, 10)
+        h.watcher.on_connected_changed(False)
+        h.watcher.on_bluez_battery(10)
+        h.watcher.on_connected_changed(True)
+        self.assertEqual(len(h.presenter.events("low_battery")), 2)
 
     def test_battery_ignored_while_disconnected(self):
-        watcher, notifier = make_watcher()
-        watcher.on_battery_changed(5)
-        self.assertEqual(notifier.sent, [])
+        h = Harness()
+        h.watcher.on_bluez_battery(5)
+        h.watcher.on_budslink_battery(lr(5, 5))
+        self.assertEqual(h.presenter.calls, [])
 
 
 if __name__ == "__main__":
