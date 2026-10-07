@@ -1,4 +1,4 @@
-// Buds Notifier Popups: draws Windows-style cards bottom-right on behalf of the
+// Buds Notifier Popups: draws Windows-style cards top-right on behalf of the
 // buds-notifier service, which drives it over the session bus.
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -34,7 +34,7 @@ const IFACE_XML = `
 
 const DEFAULT_TIMEOUT = {'nearby': 20, 'connected': 8, 'disconnected': 6, 'low-battery': 10, 'error': 10};
 const MARGIN = 16;
-const SLIDE = 24;
+const SLIDE = -24; // cards slide down into place from just above
 const ANIMATION_MS = 220;
 
 export default class BudsNotifierExtension extends Extension {
@@ -123,10 +123,9 @@ export default class BudsNotifierExtension extends Extension {
         const monitor = Main.layoutManager.primaryIndex;
         const area = Main.layoutManager.getWorkAreaForMonitor(monitor);
         const [, width] = this._card.get_preferred_width(-1);
-        const [, height] = this._card.get_preferred_height(width);
         this._card.set_position(
             area.x + area.width - width - MARGIN,
-            area.y + area.height - height - MARGIN);
+            area.y + MARGIN);
 
         if (!animate)
             return;

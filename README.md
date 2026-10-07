@@ -9,7 +9,7 @@ GNOME desktop notifications for Samsung Galaxy Buds (built for the Buds3 Pro) on
   nearby but aren't connected to the laptop
 
 With the bundled GNOME Shell extension these appear as **Windows-style cards** in the
-bottom-right corner (slide in, auto-hide, hover to keep, left/right/case battery). Without it,
+top-right corner, below the top bar (slide in, auto-hide, hover to keep, left/right/case battery). Without it,
 they're standard GNOME notifications.
 
 Tested on Ubuntu with GNOME 50 (Wayland), BlueZ 5.85, PipeWire 1.6.2 / WirePlumber 0.5.13,
