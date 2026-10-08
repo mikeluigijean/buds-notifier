@@ -17,11 +17,11 @@ const CLIENT_ID = 'buds-notifier@mikeluigijean.github.io';
 const HEARTBEAT_SECONDS = 120;
 const DEVICE_PREFIX = `${MANAGER_PATH}/Devices/`;
 
-export function budsLinkPath(bluezPath) {
+function budsLinkPath(bluezPath) {
     return DEVICE_PREFIX + bluezPath.replace(/^\/org\/bluez\//, '');
 }
 
-export function bluezPath(budslinkPath) {
+function bluezPath(budslinkPath) {
     return `/org/bluez/${budslinkPath.slice(DEVICE_PREFIX.length)}`;
 }
 

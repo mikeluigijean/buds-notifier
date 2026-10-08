@@ -11,7 +11,7 @@ const APP_PATH = '/io/github/mikeluigijean/BudsNotifier/advmon';
 const MONITOR_IFACE = 'org.bluez.AdvertisementMonitor1';
 const AD_TYPE_COMPLETE_NAME = 0x09;
 // "Adv Monitor Manager created with ... max number of supported patterns:16" (AX201).
-export const MAX_PATTERNS = 16;
+const MAX_PATTERNS = 16;
 
 const OBJECT_MANAGER_XML = `<node>
   <interface name="org.freedesktop.DBus.ObjectManager">

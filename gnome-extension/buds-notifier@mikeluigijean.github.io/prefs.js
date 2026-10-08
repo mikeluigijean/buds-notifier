@@ -1,7 +1,6 @@
 // Preferences: status checks (from the running extension over D-Bus), devices, behaviour, test.
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
@@ -148,12 +147,8 @@ export default class BudsNotifierPreferences extends ExtensionPreferences {
         const testRow = new Adw.ActionRow({title: 'Show a test card', subtitle: 'Appears top-right for a few seconds'});
         const testButton = new Gtk.Button({label: 'Show', valign: Gtk.Align.CENTER, sensitive: Boolean(status)});
         testButton.connect('clicked', () => {
-            const card = {kind: 'connected', title: 'Test earbuds', subtitle: 'Connected', battery: {slots: [
-                {key: 'left', label: 'Left', level: 80, charging: false},
-                {key: 'right', label: 'Right', level: 64, charging: false},
-                {key: 'case', label: 'Case', level: 45, charging: true}]}};
             try {
-                callExtension('Show', new GLib.Variant('(s)', [JSON.stringify(card)]));
+                callExtension('ShowTestCard');
             } catch (e) {
                 console.warn(`buds-notifier prefs: ${e.message}`);
             }

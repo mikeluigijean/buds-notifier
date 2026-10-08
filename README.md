@@ -1,13 +1,13 @@
 # Buds Notifier
 
-A GNOME Shell extension that shows **Windows-style popup cards** for your Bluetooth earbuds and
+A GNOME Shell extension that shows **popup cards** for your Bluetooth earbuds and
 headsets: automatically, for every paired headset, with no configuration.
 
 - **Connected**, with battery: **left / right / case** with [BudsLink](https://flathub.org/apps/io.github.maniacx.BudsLink),
   otherwise the single level BlueZ reports
 - **Disconnected**
 - **Low battery** (lowest earbud below 15%, warned again only after charging back to 20%)
-- **Nearby + Connect** (Swift-Pair-like): a paired headset is close but not connected; one click
+- **Nearby + Connect**: a paired headset is close but not connected; one click
   connects it over classic Bluetooth
 
 Cards slide in at the top-right (below the top bar), auto-hide (hover keeps them), and fall back
@@ -92,11 +92,22 @@ tests-js/run.js         # unit tests for the pure-JS modules
 ### Session-bus API (preferences and testing)
 
 `io.github.mikeluigijean.BudsNotifier.Shell`, `/io/github/mikeluigijean/BudsNotifier/Shell`,
-interface `…Shell1`: `Show(s card_json) → u`, `Close(u)`, `Activate(u id, s action) → b`
-(same as clicking a button), `Status() → s` (JSON: devices, nearby, BudsLink, recent cards),
-signals `ActionInvoked(u, s)` and `Closed(u, s)`.
+interface `…Shell1`:
+
+| Member | Available | Purpose |
+|---|---|---|
+| `Status() → s` | always | JSON: devices, nearby readiness, BudsLink, recent cards (read-only) |
+| `ShowTestCard()` | always | Fixed sample card (the preferences' Test button) |
+| `Show(s card_json) → u`, `Close(u)` | developer API only | Arbitrary cards for automated tests |
+| `Activate(u id, s action) → b` | developer API only | Same as clicking a card button (e.g. Connect) |
+| signals `ActionInvoked(u, s)`, `Closed(u, s)` | always | Card lifecycle |
+
+The developer API is off by default, so other apps in your session can't spoof cards or trigger
+Connect. Turn it on only while testing:
 
 ```bash
+gsettings --schemadir ~/.local/share/gnome-shell/extensions/buds-notifier@mikeluigijean.github.io/schemas \
+  set org.gnome.shell.extensions.buds-notifier developer-api true    # false when done
 gdbus call --session --dest io.github.mikeluigijean.BudsNotifier.Shell \
   --object-path /io/github/mikeluigijean/BudsNotifier/Shell \
   --method io.github.mikeluigijean.BudsNotifier.Shell1.Status
@@ -106,9 +117,10 @@ gdbus call --session --dest io.github.mikeluigijean.BudsNotifier.Shell \
 
 ```bash
 gjs -m tests-js/run.js                       # unit tests
+npx eslint@9 .                               # lint (eslint.config.mjs; needs @eslint/js@9)
 ./install.sh                                 # link into ~/.local/share/gnome-shell/extensions
-gnome-extensions pack gnome-extension/buds-notifier@mikeluigijean.github.io \
-  --extra-source=card.js --extra-source=lib --extra-source=icons --force   # zip for EGO
+mkdir -p dist && gnome-extensions pack gnome-extension/buds-notifier@mikeluigijean.github.io \
+  --extra-source=card.js --extra-source=lib --extra-source=icons --force --out-dir=dist   # zip for EGO
 ```
 
 Code changes need a log out/in on Wayland. To test without touching your session, run an

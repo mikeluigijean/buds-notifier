@@ -1,4 +1,4 @@
-// Swift-Pair-like: a paired headset advertises nearby but isn't connected. Pure JS.
+// Nearby card: a paired headset advertises nearby but isn't connected. Pure JS.
 import {matchesDevice} from './patterns.js';
 
 export class NearbyWatcher {

@@ -16,6 +16,10 @@ const MARGIN = 16;
 const SLIDE = -24; // cards slide down into place from just above
 const ANIMATION_MS = 220;
 
+function contentOf(card) {
+    return JSON.stringify([card.title, card.subtitle, card.body, card.battery]);
+}
+
 export class Popups {
     // onClosed(id, reason) / onAction(id, action) observe every card (used by the D-Bus API).
     constructor(gicon, {onClosed = () => {}, onAction = () => {}} = {}) {
@@ -49,7 +53,7 @@ export class Popups {
     show(card, actions = {}, replaces = null) {
         const handle = this._show(card, actions, replaces);
         this._remember(card, handle?.type);
-        return handle;
+        return handle ? {...handle, content: contentOf(card)} : null;
     }
 
     _remember(card, via) {
@@ -69,14 +73,18 @@ export class Popups {
 
     // Refresh what a handle shows, only if it's still visible (never re-pops a closed card).
     update(card, handle) {
-        if (handle?.type === 'card' && handle.id === this._cardId && this.canShowCards) {
+        // BudsLink re-announces its state often; skip updates that wouldn't change anything.
+        const content = contentOf(card);
+        if (!handle || handle.content === content)
+            return handle;
+        if (handle.type === 'card' && handle.id === this._cardId && this.canShowCards) {
             this.showCard(card, this._cardActions, handle.id);
             this._remember(card, 'card-update');
-        } else if (handle?.type === 'notification' && this._source?.notifications.includes(handle.notification)) {
+        } else if (handle.type === 'notification' && this._source?.notifications.includes(handle.notification)) {
             this._notify(card, {}, handle.notification);
             this._remember(card, 'notification-update');
         }
-        return handle;
+        return {...handle, content};
     }
 
     close(handle) {

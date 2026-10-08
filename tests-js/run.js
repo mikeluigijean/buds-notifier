@@ -77,7 +77,7 @@ class FakePresenter {
         return handle;
     }
     connected(device, battery, replaces) { return this._rec('connected', replaces, {battery}); }
-    disconnected(device) { return this._rec('disconnected', null, {}); }
+    disconnected(_device) { return this._rec('disconnected', null, {}); }
     lowBattery(device, battery) { return this._rec('lowBattery', null, {battery}); }
     nearby(device, onConnect, replaces) { return this._rec('nearby', replaces, {device: device.path, onConnect}); }
     connectFailed(device, error, replaces) { return this._rec('connectFailed', replaces, {error}); }

@@ -43,6 +43,10 @@
       <default>[]</default>
       <summary>Bluetooth addresses of other audio devices (e.g. speakers) to watch</summary>
     </key>
+    <key name="developer-api" type="b">
+      <default>false</default>
+      <summary>Allow arbitrary test cards and simulated clicks over D-Bus (for automated testing)</summary>
+    </key>
     <key name="welcome-shown" type="b">
       <default>false</default>
       <summary>The first-run card has been shown</summary>

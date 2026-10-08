@@ -1,4 +1,4 @@
-// Buds Notifier: Windows-style cards for any paired Bluetooth earbuds/headset — connected (with
+// Buds Notifier: popup cards for any paired Bluetooth earbuds/headset — connected (with
 // left/right/case battery via BudsLink), disconnected, low battery, and nearby + Connect.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -14,7 +14,9 @@ import {NearbyWatcher} from './lib/nearbyWatcher.js';
 import {namePatterns} from './lib/patterns.js';
 import {Popups} from './lib/popups.js';
 
-// Session-bus API: lets the preferences window show status / a test card, and scripts test cards.
+// Session-bus API. Status() and ShowTestCard() serve the preferences window. Show/Close/Activate
+// (arbitrary cards, "press a button") exist for automated testing and only work while the hidden
+// `developer-api` setting is on, so other apps can't spoof cards or trigger Connect.
 const BUS_NAME = 'io.github.mikeluigijean.BudsNotifier.Shell';
 const OBJECT_PATH = '/io/github/mikeluigijean/BudsNotifier/Shell';
 const IFACE_XML = `<node>
@@ -23,6 +25,7 @@ const IFACE_XML = `<node>
     <method name="Close"><arg type="u" direction="in" name="id"/></method>
     <method name="Activate"><arg type="u" direction="in" name="id"/><arg type="s" direction="in" name="action"/><arg type="b" direction="out" name="handled"/></method>
     <method name="Status"><arg type="s" direction="out" name="status_json"/></method>
+    <method name="ShowTestCard"/>
     <signal name="ActionInvoked"><arg type="u" name="id"/><arg type="s" name="action"/></signal>
     <signal name="Closed"><arg type="u" name="id"/><arg type="s" name="reason"/></signal>
   </interface>
@@ -308,6 +311,8 @@ export default class BudsNotifierExtension extends Extension {
     // ---- D-Bus API ----
 
     Show(cardJson) {
+        if (!this._settings.get_boolean('developer-api'))
+            return 0;
         try {
             return this._popups.showCard(JSON.parse(cardJson));
         } catch (e) {
@@ -317,11 +322,22 @@ export default class BudsNotifierExtension extends Extension {
     }
 
     Close(id) {
-        this._popups.closeCard(id);
+        if (this._settings.get_boolean('developer-api'))
+            this._popups.closeCard(id);
     }
 
     Activate(id, action) {
-        return this._popups.activate(id, action);
+        return this._settings.get_boolean('developer-api') && this._popups.activate(id, action);
+    }
+
+    ShowTestCard() {
+        this._popups.show({
+            kind: 'connected', title: 'Test earbuds', subtitle: 'Connected',
+            battery: {slots: [
+                {key: 'left', label: 'Left', level: 80, charging: false},
+                {key: 'right', label: 'Right', level: 64, charging: false},
+                {key: 'case', label: 'Case', level: 45, charging: true}]},
+        });
     }
 
     Status() {

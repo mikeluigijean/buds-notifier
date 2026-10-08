@@ -3,3 +3,6 @@ gschemas.compiled
 *.shell-extension.zip
 # Bluetooth captures contain nearby devices' broadcasts
 btmon*.txt
+# ESLint (npx / local dev install)
+node_modules
+dist/

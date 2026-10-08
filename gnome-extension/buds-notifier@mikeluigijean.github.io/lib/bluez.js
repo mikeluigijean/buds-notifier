@@ -23,7 +23,7 @@ export function isHeadset(device) {
     return HEADSET_ICONS.has(device.icon);
 }
 
-export function isAudio(device) {
+function isAudio(device) {
     return device.icon?.startsWith('audio-') || device.uuids.includes(A2DP_SINK);
 }
 
